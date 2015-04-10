@@ -59,7 +59,7 @@ class DBisso_GoogleAnalyticsInternal_Tests extends DBisso_GoogleAnalyticsInterna
 
 		// Make sure we have a draft
 		wp_update_post( array( 'ID' => 1, 'post_status' => 'draft' ) );
-		$this->assertEquals( get_post_status( 1 ), 'draft' );
+		$this->assertEquals( 'draft', get_post_status( 1 )  );
 
 		$this->http_spy();
 
@@ -74,7 +74,7 @@ class DBisso_GoogleAnalyticsInternal_Tests extends DBisso_GoogleAnalyticsInterna
 	}
 
 	public function testUpdatedPostTriggersUpdateEvent() {
-		$this->assertEquals( get_post_status( 1 ), 'publish' );
+		$this->assertEquals( 'publish', get_post_status( 1 ) );
 
 		$this->http_spy();
 
@@ -116,9 +116,12 @@ class DBisso_GoogleAnalyticsInternal_Tests extends DBisso_GoogleAnalyticsInterna
 
 	public function dataCommentStatus() {
 		return array(
-			array( 'spam', null ),
-			array( 0, 'Comment Submitted' ),
-			array( 1, 'Comment Approved' ),
+			'spam comment' => array( 'spam', null ),
+			'trashed comment' => array( 'trash', null ),
+			'deleted comment' => array( 'delete', null ),
+			'unapproved comment' => array( 'unapproved', null ),
+			'submitted comment' => array( 'held', 'Comment Submitted' ),
+			'approved comment' => array( 'approved', 'Comment Approved' ),
 		);
 	}
 
@@ -132,9 +135,17 @@ class DBisso_GoogleAnalyticsInternal_Tests extends DBisso_GoogleAnalyticsInterna
 		$this->assertEquals( $expected_action, $action );
 	}
 
+	public function dataNewCommentStatus() {
+		return array(
+			'spam comment' => array( 'spam', null ),
+			'submitted comment' => array( 0, 'Comment Submitted' ),
+			'approved comment' => array( 1, 'Comment Approved' ),
+		);
+	}
+
 	/**
      * Test the triggering of events when a comment is posted and approved
-     * @dataProvider dataCommentStatus
+     * @dataProvider dataNewCommentStatus
 	 */
 	public function testCommentStatusEvent( $status, $expected_action ) {
 		$post_id = 1;
@@ -208,6 +219,29 @@ class DBisso_GoogleAnalyticsInternal_Tests extends DBisso_GoogleAnalyticsInterna
 		$this->assertGAIRequestBodyIsValid( $request_body );
 		$this->assertEquals( 'Comment Approved', $request_body['ea'] , '"Comment Approved" was not set as the event action' );
 		$this->assertEquals( get_the_title( $post_id ), $request_body['el'], 'Post title was not set as the event label' );
+	}
+
+	public function testApprovedCommentTriggersNoEventOnUnapproval() {
+		$post_id = 1;
+		$post    = get_post( $post_id );
+
+		$data                     = $this->getAComment();
+		$data['comment_post_ID']  = $post_id;
+		$data['comment_approved'] = 1;
+
+		// Insert unapproved comment
+		$comment_id = wp_insert_comment( $data );
+
+		// Mark comment as approved
+		$data['comment_ID'] = $comment_id;
+		$data['comment_approved'] = 0;
+
+		$this->http_spy();
+		wp_update_comment( $data );
+
+		$request_body = $this->http_spy_get_request_body();
+
+		$this->assertTrue( is_null( $request_body ), 'GA request should not be sent.' ) ;
 	}
 
 
